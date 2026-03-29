@@ -1,0 +1,98 @@
+{
+    "general": {
+        "name": null,
+        "port": null,
+        "host": null,
+        "secret_key": "ctgx8PMR9zsrPbqp",
+        "force_ssl": null,
+        "editor": "vim",
+        "logout": null,
+        "display_hidden": null,
+        "refresh_after_upload": null,
+        "open_mode": null,
+        "upload_button": null,
+        "upload_pool_size": null,
+        "upload_chunk_size": null,
+        "buffer_size": null,
+        "filepage_default_view": null,
+        "filepage_default_sort": null,
+        "cookie_timeout": null,
+        "extended_session": null,
+        "custom_css": null,
+        "license": null
+    },
+    "features": {
+        "api": {
+            "enable": null
+        },
+        "share": {
+            "enable": null,
+            "default_access": null,
+            "redirect": null
+        },
+        "protection": {
+            "iframe": null,
+            "enable_chromecast": null,
+            "signature": null,
+            "disable_svg": null,
+            "zip_timeout": null,
+            "disable_csp": null,
+            "enable": null
+        },
+        "workflow": {
+            "enable": null,
+            "workers": null
+        },
+        "search": {
+            "explore_timeout": null
+        },
+        "office": {
+            "office_server": null,
+            "filestash_server": null,
+            "rewrite_discovery_url": null,
+            "enable": null
+        },
+        "mcp": {
+            "enable": null
+        },
+        "site": {
+            "enable": null,
+            "autoindex": null,
+            "cors_allow_origins": null
+        },
+        "video": {
+            "blacklist_format": null,
+            "enable_transcoder": null
+        },
+        "server": {
+            "console_enable": null
+        }
+    },
+    "log": {
+        "enable": null,
+        "level": null,
+        "telemetry": true
+    },
+    "email": {
+        "server": null,
+        "port": null,
+        "username": null,
+        "password": null,
+        "from": null
+    },
+    "auth": {
+        "admin": "$2a$10$3zLUVah.kljkfrMahxbEJOam6gA72pcp7nc3oPUZQzgLtBV3qVTDO"
+    },
+    "middleware": {
+        "identity_provider": {
+            "type": null
+        },
+        "attribute_mapping": null
+    },
+    "connections": [
+        {
+            "type": "local",
+            "label": "/srv/"
+        }
+    ]
+}
