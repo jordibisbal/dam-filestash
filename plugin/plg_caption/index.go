@@ -19,9 +19,10 @@ import (
 var captionPluginJS []byte
 
 const (
-	// outputClipDir is the directory where caption sidecar JSON files are written.
-	// Must match the /srv/output_clip mount in docker-compose.yml.
-	outputClipDir = "/srv/output_clip"
+	// imagesDir is the images directory mounted inside the Filestash container.
+	// Sidecar JSON files are written here by the captioner, beside each image.
+	// Must match the /srv/images mount in docker-compose.yml.
+	imagesDir = "/srv/images"
 
 	// dashboardCaptionURL is the dashboard endpoint that publishes to Kafka.
 	// Resolved via Docker DNS inside the compose network.
@@ -148,7 +149,7 @@ func (CaptionMetadata) Search(ctx *App, path string, facets map[string]any) (map
 
 // sidecarPathFor converts a Filestash data-path to the sidecar JSON path.
 //
-//   /images/subdir/photo.png  →  /srv/output_clip/subdir/photo.json
+//   /images/subdir/photo.png  →  /srv/images/subdir/.photo.json
 //   /output_clip/subdir/x.mp4 →  "" (non-image prefixes are ignored)
 func sidecarPathFor(filePath string) string {
 	rel := strings.TrimPrefix(filePath, "/images/")
@@ -161,6 +162,7 @@ func sidecarPathFor(filePath string) string {
 	if ext != "" {
 		rel = rel[:len(rel)-len(ext)]
 	}
-	rel += ".json"
-	return filepath.Join(outputClipDir, rel)
+	// Prefix with '.' so the sidecar is a hidden file alongside the image.
+	dir, base := filepath.Split(rel)
+	return filepath.Join(imagesDir, dir, "."+base+".json")
 }

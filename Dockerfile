@@ -1,14 +1,31 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 # Clones Filestash from GitHub, injects our caption plugin, and compiles the
 # Go binary (frontend assets are plain JS already checked in — no build step).
-FROM golang:1.24-bullseye AS builder
+FROM golang:1.24-bookworm AS builder
 
 ARG FILESTASH_REF=master
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates \
-    libbrotli-dev libraw-dev \
+    git ca-certificates cmake \
+    libbrotli-dev libraw-dev libgif-dev \
+    libjpeg-dev libpng-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Build libwebp from source — Bookworm ships 1.2.4 which predates libsharpyuv.
+# Filestash links against -l:libsharpyuv.a so we need 1.3+.
+RUN git clone --depth 1 --branch v1.4.0 \
+        https://github.com/webmproject/libwebp.git /tmp/libwebp && \
+    cmake -B /tmp/libwebp/build -S /tmp/libwebp \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DWEBP_BUILD_ANIM_UTILS=OFF -DWEBP_BUILD_CWEBP=OFF \
+        -DWEBP_BUILD_DWEBP=OFF    -DWEBP_BUILD_GIF2WEBP=OFF \
+        -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
+        -DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF \
+        -DWEBP_BUILD_EXTRAS=OFF && \
+    cmake --build /tmp/libwebp/build --parallel $(nproc) && \
+    cmake --install /tmp/libwebp/build && \
+    rm -rf /tmp/libwebp
 
 # Allow Go to auto-download the toolchain version required by go.mod
 ENV GOTOOLCHAIN=auto
@@ -35,10 +52,10 @@ RUN go generate -x ./server/... && \
     go build --tags "fts5" -o /filestash cmd/main.go
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
+    ca-certificates libbrotli1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /filestash /app/filestash

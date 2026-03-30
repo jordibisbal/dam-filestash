@@ -4,40 +4,10 @@
   const CAPTION_API = '/api/plugin/caption';
   const IMAGE_EXT = /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i;
 
-  // ── Floating button ──────────────────────────────────────────────────────────
-
-  const btn = document.createElement('button');
-  btn.id = 'caption-plugin-btn';
-  Object.assign(btn.style, {
-    display:      'none',
-    position:     'fixed',
-    bottom:       '24px',
-    right:        '24px',
-    zIndex:       '99999',
-    padding:      '10px 18px',
-    background:   '#0d7d2e',
-    color:        '#fff',
-    border:       'none',
-    borderRadius: '6px',
-    fontSize:     '13px',
-    fontWeight:   '600',
-    cursor:       'pointer',
-    boxShadow:    '0 2px 8px rgba(0,0,0,.4)',
-    whiteSpace:   'nowrap',
-    fontFamily:   'sans-serif',
-  });
-
-  function mountBtn() {
-    if (document.body) { document.body.appendChild(btn); }
-    else { setTimeout(mountBtn, 50); }
-  }
-  mountBtn();
-
   // ── Selected-file detection ──────────────────────────────────────────────────
   //
   // Filestash renders each file as:
   //   <a class="component_thing ... selected" data-path="/images/subdir/file.png">
-  // The data-path starts with /images/... (relative to /srv/ inside the container).
 
   function selectedImagePaths() {
     const paths = [];
@@ -48,51 +18,74 @@
     return paths;
   }
 
-  // ── Refresh button visibility ────────────────────────────────────────────────
+  // ── Toolbar button injection ─────────────────────────────────────────────────
+  //
+  // The Filestash toolbar is:
+  //   <div class="component_submenu container" role="toolbar">
+  //     <div class="action left no-select">
+  //       <button data-action="download">Download</button>
+  //       <button data-action="delete">Remove</button>
+  //       ...
+  //     </div>
+  //   </div>
+  //
+  // We inject our button after the last existing left-side button and show/hide
+  // it based on whether selected files contain images.
 
-  let currentPaths = [];
+  var captionBtn = null;
+
+  function createBtn() {
+    var b = document.createElement('button');
+    b.setAttribute('data-action', 'caption');
+    b.textContent = 'Caption';
+    b.addEventListener('click', onCaptionClick);
+    return b;
+  }
+
+  function ensureBtnInToolbar() {
+    var leftBar = document.querySelector('.component_submenu .action.left');
+    if (!leftBar) return false;
+    if (leftBar.querySelector('[data-action="caption"]')) return true;
+    captionBtn = createBtn();
+    leftBar.appendChild(captionBtn);
+    return true;
+  }
 
   function refresh() {
-    currentPaths = selectedImagePaths();
-    if (currentPaths.length > 0) {
-      btn.textContent = '\uD83D\uDCF8 CAPTION (' + currentPaths.length + ')';
-      btn.style.display = 'block';
-    } else {
-      btn.style.display = 'none';
+    // Pause the observer for the entire refresh to prevent DOM mutations we
+    // make here (appendChild, textContent, style) from re-triggering refresh.
+    observer.disconnect();
+    try {
+      if (!ensureBtnInToolbar()) return;
+      var paths = selectedImagePaths();
+      if (paths.length > 0) {
+        captionBtn.style.display = '';
+        captionBtn.textContent = 'Caption (' + paths.length + ')';
+      } else {
+        captionBtn.style.display = 'none';
+      }
+    } finally {
+      observer.observe(document.body, OBSERVER_OPTS);
     }
   }
 
-  const observer = new MutationObserver(refresh);
-  function startObserver() {
-    observer.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-  }
-  if (document.body) { startObserver(); }
-  else { document.addEventListener('DOMContentLoaded', startObserver); }
-
-  window.addEventListener('hashchange', refresh);
-
   // ── Caption action ───────────────────────────────────────────────────────────
 
-  btn.addEventListener('click', async function () {
-    const paths = currentPaths.slice();
+  async function onCaptionClick() {
+    var paths = selectedImagePaths();
     if (paths.length === 0) return;
 
-    btn.disabled = true;
-    btn.style.background = '#555';
-    btn.textContent = '\u23F3 Sending ' + paths.length + '\u2026';
+    captionBtn.disabled = true;
+    captionBtn.textContent = 'Sending\u2026';
 
-    let sent = 0, failed = 0;
+    var sent = 0, failed = 0;
 
-    for (const filePath of paths) {
-      const jobId = 'caption-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      // data-path is /images/... → captioner mount is /app/images/...
-      const imagePath = '/app' + filePath;
+    for (var i = 0; i < paths.length; i++) {
+      var filePath = paths[i];
+      var jobId = 'caption-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      var imagePath = '/app' + filePath;
       try {
-        const resp = await fetch(CAPTION_API, {
+        var resp = await fetch(CAPTION_API, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ job_id: jobId, image_path: imagePath }),
@@ -103,19 +96,37 @@
       }
     }
 
-    if (failed === 0) {
-      btn.style.background = '#1a7f37';
-      btn.textContent = '\u2705 ' + sent + ' job' + (sent !== 1 ? 's' : '') + ' sent';
-    } else {
-      btn.style.background = '#d73a49';
-      btn.textContent = '\u26A0 ' + sent + ' sent, ' + failed + ' failed';
-    }
+    captionBtn.textContent = failed === 0
+      ? '\u2713 ' + sent + ' sent'
+      : sent + ' sent, ' + failed + ' failed';
 
     setTimeout(function () {
-      btn.disabled = false;
-      btn.style.background = '#0d7d2e';
+      captionBtn.disabled = false;
       refresh();
-    }, 3000);
-  });
+    }, 2500);
+  }
+
+  // ── Observer ─────────────────────────────────────────────────────────────────
+  //
+  // Watch for toolbar appearance (SPA navigation) and selection changes.
+
+  var OBSERVER_OPTS = {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['class'],
+  };
+
+  var observer = new MutationObserver(refresh);
+
+  function start() {
+    observer.observe(document.body, OBSERVER_OPTS);
+    refresh();
+  }
+
+  if (document.body) { start(); }
+  else { document.addEventListener('DOMContentLoaded', start); }
+
+  window.addEventListener('hashchange', refresh);
 
 }());
