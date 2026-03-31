@@ -7,6 +7,40 @@ const FILESTASH_PORT = parseInt(FILESTASH_ORIGIN.port || '8334', 10);
 // Injected into every Filestash HTML page so the caption toolbar button is loaded.
 const SCRIPT_TAG = '<script src="/api/plugin/caption/plugin.js"></script>';
 
+// Injected via JS so our rules are appended to the CSSOM *after* Filestash's
+// dynamically-injected component styles, ensuring !important wins regardless of
+// specificity ties. Fixes:
+// 1. When the sidebar is hidden/empty, Filestash caps content at max-width:815px — remove that cap.
+// 2. Hide .xmp sidecar files wherever they appear (case-insensitive).
+const OVERRIDE_CSS =
+  // Filestash hides the sidebar (left panel) when document.body.clientWidth < 1100.
+  // In the dashboard iframe the body is narrower than the viewport, so the sidebar
+  // gets hidden even on wide screens. Force it visible at all times.
+  '.component_filemanager_shell>[data-bind="sidebar"]' +
+  '{position:static!important;left:auto!important;top:auto!important;' +
+  'width:auto!important;height:100%!important;overflow:visible!important}' +
+  // Hide the breadcrumb "reopen sidebar" button — sidebar is always visible.
+  '[alt="sidebar-open"]{display:none!important}' +
+  // Remove the max-width:815px cap on content when sidebar is hidden/empty.
+  '.component_filemanager_shell [data-bind="sidebar"].hidden~div>[data-bind="filemanager-children"] .container,' +
+  '.component_filemanager_shell [data-bind="sidebar"]:empty~div>[data-bind="filemanager-children"] .container,' +
+  '.component_filemanager_shell [data-bind="sidebar"].hidden~div>component-breadcrumb>.component_breadcrumb,' +
+  '.component_filemanager_shell [data-bind="sidebar"]:empty~div>component-breadcrumb>.component_breadcrumb' +
+  '{max-width:none!important;width:100%!important}' +
+  // Hide .xmp sidecar files.
+  '[data-path$=".xmp" i]{display:none!important}';
+
+const STYLE_TAG =
+  '<script>(function(){' +
+  'function applyOverride(){' +
+  'var s=document.getElementById("__dam_override");' +
+  'if(!s){s=document.createElement("style");s.id="__dam_override";document.head.appendChild(s);}' +
+  's.textContent=' + JSON.stringify(OVERRIDE_CSS) + ';' +
+  '}' +
+  'applyOverride();' +
+  'new MutationObserver(applyOverride).observe(document.head,{childList:true});' +
+  '})()</script>';
+
 // Proxy a request to Filestash, stripping security headers that prevent iframe
 // embedding and injecting the caption plugin script into HTML responses.
 function proxyToFilestash(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -34,9 +68,10 @@ function proxyToFilestash(req: http.IncomingMessage, res: http.ServerResponse): 
       proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
       proxyRes.on('end', () => {
         let html = Buffer.concat(chunks).toString('utf8');
+        const inject = STYLE_TAG + SCRIPT_TAG;
         html = html.includes('</body>')
-          ? html.replace('</body>', `${SCRIPT_TAG}</body>`)
-          : html + SCRIPT_TAG;
+          ? html.replace('</body>', `${inject}</body>`)
+          : html + inject;
         headers['content-length'] = Buffer.byteLength(html).toString();
         delete headers['transfer-encoding'];
         res.writeHead(proxyRes.statusCode ?? 200, headers);

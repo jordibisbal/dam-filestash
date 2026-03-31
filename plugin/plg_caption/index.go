@@ -127,6 +127,7 @@ func (CaptionMetadata) Get(ctx *App, path string) ([]FormElement, error) {
 
 	return []FormElement{
 		{
+			Id:       "caption",
 			Name:     "Caption",
 			Type:     "long_text",
 			Value:    cf.Caption,
@@ -147,15 +148,22 @@ func (CaptionMetadata) Search(ctx *App, path string, facets map[string]any) (map
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-// sidecarPathFor converts a Filestash data-path to the sidecar JSON path.
+// sidecarPathFor converts a Filestash path to the sidecar JSON path.
 //
-//   /images/subdir/photo.png  →  /srv/images/subdir/.photo.json
-//   /output_clip/subdir/x.mp4 →  "" (non-image prefixes are ignored)
+// PathBuilder prepends the session root (/srv/), so the path arrives as
+// /srv/images/subdir/photo.png.  We also accept /images/... for direct calls.
+//
+//   /srv/images/subdir/photo.png  →  /srv/images/subdir/.photo.json
+//   /images/subdir/photo.png      →  /srv/images/subdir/.photo.json
+//   anything else                 →  ""
 func sidecarPathFor(filePath string) string {
-	rel := strings.TrimPrefix(filePath, "/images/")
+	rel := strings.TrimPrefix(filePath, "/srv/images/")
 	if rel == filePath {
-		// Path didn't start with /images/ — not an input image, skip.
-		return ""
+		// Try without the /srv/ prefix (direct API call).
+		rel = strings.TrimPrefix(filePath, "/images/")
+		if rel == filePath {
+			return ""
+		}
 	}
 	// Replace extension with .json
 	ext := filepath.Ext(rel)
