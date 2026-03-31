@@ -15,7 +15,7 @@
         "upload_chunk_size": null,
         "buffer_size": null,
         "filepage_default_view": null,
-        "filepage_default_sort": null,
+        "filepage_default_sort": "name",
         "cookie_timeout": null,
         "extended_session": null,
         "custom_css": null,
@@ -34,17 +34,23 @@
             "iframe": null,
             "enable_chromecast": null,
             "signature": null,
+            "enable": null,
             "disable_svg": null,
             "zip_timeout": null,
-            "disable_csp": null,
-            "enable": null
+            "disable_csp": null
         },
         "workflow": {
-            "enable": null,
+            "enable": false,
             "workers": null
         },
-        "search": {
-            "explore_timeout": null
+        "video": {
+            "blacklist_format": null,
+            "enable_transcoder": false
+        },
+        "site": {
+            "autoindex": null,
+            "enable": null,
+            "cors_allow_origins": null
         },
         "office": {
             "office_server": null,
@@ -55,14 +61,8 @@
         "mcp": {
             "enable": null
         },
-        "site": {
-            "enable": null,
-            "autoindex": null,
-            "cors_allow_origins": null
-        },
-        "video": {
-            "blacklist_format": null,
-            "enable_transcoder": null
+        "search": {
+            "explore_timeout": null
         },
         "server": {
             "console_enable": null
@@ -84,15 +84,15 @@
         "admin": "$2a$10$3zLUVah.kljkfrMahxbEJOam6gA72pcp7nc3oPUZQzgLtBV3qVTDO"
     },
     "middleware": {
+        "attribute_mapping": null,
         "identity_provider": {
             "type": null
-        },
-        "attribute_mapping": null
+        }
     },
     "connections": [
         {
-            "type": "local",
-            "label": "/srv/"
+            "label": "/srv/",
+            "type": "local"
         }
     ]
 }

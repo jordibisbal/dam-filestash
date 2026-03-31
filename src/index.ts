@@ -7,27 +7,16 @@ const FILESTASH_PORT = parseInt(FILESTASH_ORIGIN.port || '8334', 10);
 // Injected into every Filestash HTML page so the caption toolbar button is loaded.
 const SCRIPT_TAG = '<script src="/api/plugin/caption/plugin.js"></script>';
 
-// Injected via JS so our rules are appended to the CSSOM *after* Filestash's
-// dynamically-injected component styles, ensuring !important wins regardless of
-// specificity ties. Fixes:
-// 1. When the sidebar is hidden/empty, Filestash caps content at max-width:815px — remove that cap.
+// Injected CSS fixes (applied via a MutationObserver script so our <style> is
+// always the last one in the CSSOM, winning any !important specificity ties):
+// 1. Remove the max-width:815px cap on the content area when the sidebar is hidden/empty.
 // 2. Hide .xmp sidecar files wherever they appear (case-insensitive).
 const OVERRIDE_CSS =
-  // Filestash hides the sidebar (left panel) when document.body.clientWidth < 1100.
-  // In the dashboard iframe the body is narrower than the viewport, so the sidebar
-  // gets hidden even on wide screens. Force it visible at all times.
-  '.component_filemanager_shell>[data-bind="sidebar"]' +
-  '{position:static!important;left:auto!important;top:auto!important;' +
-  'width:auto!important;height:100%!important;overflow:visible!important}' +
-  // Hide the breadcrumb "reopen sidebar" button — sidebar is always visible.
-  '[alt="sidebar-open"]{display:none!important}' +
-  // Remove the max-width:815px cap on content when sidebar is hidden/empty.
   '.component_filemanager_shell [data-bind="sidebar"].hidden~div>[data-bind="filemanager-children"] .container,' +
   '.component_filemanager_shell [data-bind="sidebar"]:empty~div>[data-bind="filemanager-children"] .container,' +
   '.component_filemanager_shell [data-bind="sidebar"].hidden~div>component-breadcrumb>.component_breadcrumb,' +
   '.component_filemanager_shell [data-bind="sidebar"]:empty~div>component-breadcrumb>.component_breadcrumb' +
   '{max-width:none!important;width:100%!important}' +
-  // Hide .xmp sidecar files.
   '[data-path$=".xmp" i]{display:none!important}';
 
 const STYLE_TAG =
@@ -40,6 +29,16 @@ const STYLE_TAG =
   'applyOverride();' +
   'new MutationObserver(applyOverride).observe(document.head,{childList:true});' +
   '})()</script>';
+
+// Strings to rewrite in JavaScript responses (sub_filter equivalent).
+// Filestash's ctrlSidebar bails with `if (window.self !== window.top) return`
+// when running inside an iframe — rewrite that check to false so the sidebar
+// always renders.
+const JS_REWRITES: Array<[string, string]> = [
+  ['new URL(location.toString()).searchParams.get(\\"nav\\") === \\"false\\"', 'false'],
+  ['window.self!==window.top', 'false'],
+  ['window.self !== window.top', 'false'],
+];
 
 // Proxy a request to Filestash, stripping security headers that prevent iframe
 // embedding and injecting the caption plugin script into HTML responses.
@@ -62,20 +61,30 @@ function proxyToFilestash(req: http.IncomingMessage, res: http.ServerResponse): 
     delete headers['x-frame-options'];
     delete headers['content-security-policy'];
 
-    const isHtml = (headers['content-type'] ?? '').includes('text/html');
-    if (isHtml) {
+    const contentType = headers['content-type'] ?? '';
+    const isHtml = contentType.includes('text/html');
+    const isJs   = contentType.includes('javascript');
+
+    if (isHtml || isJs) {
       const chunks: Buffer[] = [];
       proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
       proxyRes.on('end', () => {
-        let html = Buffer.concat(chunks).toString('utf8');
-        const inject = STYLE_TAG + SCRIPT_TAG;
-        html = html.includes('</body>')
-          ? html.replace('</body>', `${inject}</body>`)
-          : html + inject;
-        headers['content-length'] = Buffer.byteLength(html).toString();
+        let body = Buffer.concat(chunks).toString('utf8');
+        if (isHtml) {
+          const inject = STYLE_TAG + SCRIPT_TAG;
+          body = body.includes('</body>')
+            ? body.replace('</body>', `${inject}</body>`)
+            : body + inject;
+        }
+        if (isJs) {
+          for (const [from, to] of JS_REWRITES) {
+            body = body.split(from).join(to);
+          }
+        }
+        headers['content-length'] = Buffer.byteLength(body).toString();
         delete headers['transfer-encoding'];
         res.writeHead(proxyRes.statusCode ?? 200, headers);
-        res.end(html);
+        res.end(body);
       });
     } else {
       res.writeHead(proxyRes.statusCode ?? 200, headers);
